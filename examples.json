@@ -1,0 +1,56 @@
+{
+  "observations": {
+    "batch_id": "day",
+    "rows": [
+      {"row_id": "o1", "station": "A", "value": 10},
+      {"row_id": "o2", "station": "A", "value": 10},
+      {"row_id": "o3", "station": "B", "value": 20}
+    ]
+  },
+  "calibrations": {
+    "batch_id": "bench",
+    "rows": [
+      {"row_id": "c1", "station": "A", "value": 3},
+      {"row_id": "c2", "station": "A", "value": 5}
+    ]
+  },
+  "query": {
+    "op": "project",
+    "input": {"op": "scan", "table": "observations", "as": "s"},
+    "as": "report",
+    "columns": {
+      "row_id": {"op": "col", "alias": "s", "name": "row_id"},
+      "station": {"op": "col", "alias": "s", "name": "station"},
+      "count": {
+        "op": "count",
+        "query": {
+          "op": "filter",
+          "input": {"op": "scan", "table": "calibrations", "as": "c"},
+          "where": {
+            "op": "eq",
+            "left": {"op": "col", "alias": "c", "name": "station"},
+            "right": {"op": "col", "alias": "s", "name": "station"}
+          }
+        }
+      },
+      "sum": {
+        "op": "sum",
+        "query": {
+          "op": "filter",
+          "input": {"op": "scan", "table": "calibrations", "as": "c"},
+          "where": {
+            "op": "eq",
+            "left": {"op": "col", "alias": "c", "name": "station"},
+            "right": {"op": "col", "alias": "s", "name": "station"}
+          }
+        },
+        "value": {"op": "col", "alias": "c", "name": "value"}
+      }
+    }
+  },
+  "expected": [
+    {"row_id": "o1", "station": "A", "count": 2, "sum": 8},
+    {"row_id": "o2", "station": "A", "count": 2, "sum": 8},
+    {"row_id": "o3", "station": "B", "count": 0, "sum": null}
+  ]
+}
