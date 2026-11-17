@@ -12,3 +12,16 @@ def export(storage, result_id, path=None):
     if path is not None:
         Path(path).write_text(encoded + '\n', encoding='utf-8')
     return encoded
+
+
+def build_audit_export_document(storage, result_id):
+    from labpipe.results.reader import read_audit
+    return read_audit(storage, result_id)
+
+
+def export_audit(storage, result_id, path=None):
+    from labpipe.results.audit_codec import encode_audit_document
+    encoded = encode_audit_document(build_audit_export_document(storage, result_id))
+    if path is not None:
+        Path(path).write_text(encoded + '\n', encoding='utf-8')
+    return encoded

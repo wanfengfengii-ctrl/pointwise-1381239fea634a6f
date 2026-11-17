@@ -12,9 +12,10 @@ from labpipe.planning.compiler import compile
 from labpipe.planning.registry import PlanRegistry
 from labpipe.planning.format import PlanError
 from labpipe.execution.runner import run_plan
-from labpipe.results.publication import publish_result
-from labpipe.results.reader import read
-from labpipe.results.export import export
+from labpipe.execution.audit import run_audited
+from labpipe.results.publication import publish_result, publish_audited_result
+from labpipe.results.reader import read, read_audit
+from labpipe.results.export import export, export_audit
 from labpipe.results.codec import ResultError
 
 
@@ -23,6 +24,13 @@ def execute(storage, plan_id):
     reader = SnapshotRelationReader(storage, document.snapshot_id)
     rows = run_plan(document, reader)
     return publish_result(storage, plan_id, rows)
+
+
+def execute_audited(storage, plan_id):
+    document = PlanRegistry(storage).load_plan(plan_id)
+    reader = SnapshotRelationReader(storage, document.snapshot_id)
+    rows, audit = run_audited(document, reader)
+    return publish_audited_result(storage, plan_id, rows, audit)
 
 
 def process_day(storage, observation_revision, calibration_revision, query_tree):
@@ -43,6 +51,12 @@ def _demo(directory, sample_path):
         result_id = operation['result_id']
         original = read(storage, result_id)
         assert original['rows'] == sample['expected']
+        audited_id = execute_audited(storage, plan_id)
+        audited = read_audit(storage, audited_id)
+        assert audited['rows'] == sample['expected']
+        assert [o['source']['row_id'] for o in audited['audit']] == ['o1', 'o2', 'o3']
+        assert [o['source']['row_id'] for o in audited['audit']] == [
+            row['row_id'] for row in sample['expected']]
         changed = [dict(row, value=30 if i == 0 else 50)
                    for i, row in enumerate(sample['calibrations']['rows'])]
         ingest(storage, 'calibrations', sample['calibrations']['batch_id'], changed)
@@ -51,6 +65,15 @@ def _demo(directory, sample_path):
         assert repeated['rows'] == sample['expected']
         exported = json.loads(export(storage, result_id, Path(directory) / 'quality.json'))
         assert exported == original
+        reopened_audit = read_audit(storage, audited_id)
+        assert reopened_audit == audited
+        evidence_path = Path(directory) / 'evidence.json'
+        audited_export = json.loads(export_audit(storage, audited_id, evidence_path))
+        assert audited_export == audited
+        assert json.loads(evidence_path.read_text(encoding='utf-8')) == audited
+        assert read(storage, audited_id) == {k: audited[k] for k in original}
+        assert 'audit' not in read(storage, audited_id)
+        assert read(storage, audited_id)['rows'] == original['rows']
         print('POINTWISE_SCENARIO ' + json.dumps({
             'case_id': 'V8.export_roundtrip', 'input': {
                 'observations': sample['observations']['rows'],
@@ -59,8 +82,11 @@ def _demo(directory, sample_path):
             'expected': sample['expected'], 'actual': repeated['rows'],
             'downstream_expected': original, 'downstream_actual': exported,
             'code_paths': ['labpipe/planning/compiler.py', 'labpipe/execution/runner.py',
-                           'labpipe/results/publication.py', 'labpipe/results/export.py'],
+                           'labpipe/results/publication.py', 'labpipe/results/export.py',
+                           'labpipe/execution/audit.py', 'labpipe/results/reader.py'],
             'oracle': 'A has two calibrations: 3+5=8; B has none; three observation identities',
+            'audit': audited_export['audit'],
+            'audit_export_reopened_equal': True,
         }, ensure_ascii=False))
 
 

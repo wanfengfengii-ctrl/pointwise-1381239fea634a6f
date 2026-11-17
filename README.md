@@ -58,6 +58,22 @@ RevisionStore.read_revision(id)返回带batch_id的历史行；返回对象和�
 
 read返回result_id、plan_id、snapshot_id、row_order、rows、provenance；来源含固定两表修订、单位和行数。export返回UTF-8 JSON文本，传path时同时写文件。行序是实际保存的0起连续序号。读取与导出只消费已保存成果及来源，不重新编译或执行，也不查当前源指针。
 
+### 审计成果
+
+在原有接口之上新增三个入口（格式与契约见AUDIT.md，归属不变量见INVARIANTS.md）：
+
+```python
+from labpipe.workflow.processing import execute_audited
+from labpipe.results.reader import read_audit
+from labpipe.results.export import export_audit
+
+audited_id = execute_audited(storage, plan)      # 业务行与execute完全相同
+document = read_audit(storage, audited_id)       # read的六字段 + audit
+text = export_audit(storage, audited_id)         # 完整文档的UTF-8 JSON（可选path）
+```
+
+每次输出项保留投影前驱动scan的来源，每次count/sum调用保留候选、接纳成员及精确贡献，递归区分筛选候选与sum成员触发的调用；被拒候选的已发生调用仍保留。证据与业务行同事务发布，失败无部分成果；旧成果无证据，审计读取抛ResultError。业务行仍可用read/export按原六字段读取。
+
 ## 查询树契约
 
 examples.json给出完整主样例。对象的op及所列字段为精确字段集合，不接受未知字段：
@@ -87,4 +103,6 @@ CLI复用相同API，成功打印JSON并退出0，领域、SQLite或输入文件
 
 ## 回归映射
 
-test_intake覆盖V1/V2：重复身份、整批拒绝、重放、更正历史、冻结和上游异常。test_plans覆盖V4/V5：遮蔽及合法改名、持久引用、歧义/越界/类型与算子拒绝、发布前预检。test_processing覆盖V3/V6：手算核对、空聚合、投影多重集、null、精确大整数、输入顺序与嵌套退出。test_results覆盖V7/V8：真实SQLite触发器分别中断行和来源写入、旧成果完整、固定计划及更正后重开、导出与读取隔离。test_boundaries补充重复初始化、存储版本拒绝、修订/计划写入失败、执行输入不匹配及日加工入口。完整发现命令保留全部原断言。
+test_intake覆盖V1/V2：重复身份、整批拒绝、重放、更正历史、冻结和上游异常。test_plans覆盖V4/V5：遮蔽及合法改名、持久引用、歧义/越界/类型与算子拒绝、发布前预检。test_processing覆盖V3/V6：手算核对、空聚合、投影多重集、null、精确大整数、输入顺序与嵌套退出。test_results覆盖V7/V8：真实SQLite触发器分别中断行和来源写入、旧成果完整、固定计划及更正后重开、导出与读取隔离。test_audit覆盖新增审计：业务行与原执行一致、投影重复行来源独立、候选与成员归属、被拒候选嵌套调用、空成果与旧成果拒绝、证据写入失败原子性、重开导出及V1库升级。test_boundaries补充重复初始化、存储版本拒绝、修订/计划写入失败、执行输入不匹配及日加工入口。
+
+AUDIT.md另增三条普通基线命令：`python3.11 -B audit_cases.py v1`校验原手算夹具，`python3.11 -B audit_cases.py check`核对审计手算、投影重复、筛选拒绝、sum成员调用、遮蔽改名、空成果、返回隔离与磁盘重开导出；`check --evidence-table lp_result_audit`再用真实触发器中断证据写入。`.pointwise-runtime.json`的verify串起原回归、`v1_check`与带证据中断的`audited_check`，demo打印审计成果并在重开后导出evidence.json。完整发现命令保留全部原断言。

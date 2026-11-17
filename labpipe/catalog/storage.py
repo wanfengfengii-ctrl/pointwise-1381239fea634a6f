@@ -14,6 +14,11 @@ _DDL = (
     'CREATE TABLE lp_result_rows(result_id INTEGER NOT NULL REFERENCES lp_results(id), ordinal INTEGER NOT NULL, row_json TEXT NOT NULL, PRIMARY KEY(result_id,ordinal))',
 )
 
+# Added with audited evidence delivery; created for both fresh and existing V1 stores.
+_EXTRA_DDL = (
+    'CREATE TABLE IF NOT EXISTS lp_result_audit(result_id INTEGER PRIMARY KEY REFERENCES lp_results(id), doc TEXT NOT NULL)',
+)
+
 
 class Storage:
     def __init__(self, connection):
@@ -48,8 +53,10 @@ class Storage:
                         "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
                     ).fetchone():
                         raise sqlite3.DatabaseError('incomplete labpipe storage: ' + name)
+                for statement in _EXTRA_DDL:
+                    self.connection.execute(statement)
                 return
-            for statement in _DDL:
+            for statement in _DDL + _EXTRA_DDL:
                 self.connection.execute(statement)
             self.connection.execute('INSERT INTO lp_meta VALUES(?)', (STORAGE_VERSION,))
 
